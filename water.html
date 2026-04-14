@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>智能水质监测系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 md:p-8">
+  <div class="max-w-6xl mx-auto">
+    <!-- 标题栏 -->
+    <div class="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm mb-6">
+      <h1 class="text-xl md:text-2xl font-bold text-blue-600">智能水质监测系统</h1>
+      <span id="update-time" class="text-sm text-gray-500">加载中...</span>
+    </div>
+
+    <!-- 数据卡片 -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
+        <div class="text-sm text-gray-500">水温</div>
+        <div id="temp" class="text-xl font-bold mt-1">-- ℃</div>
+      </div>
+      <div class="bg-white rounded-lg shadow-sm p-4 border-l-4 border-blue-500">
+        <div class="text-sm text-gray-500">PH 值</div>
+        <div id="ph" class="text-xl font-bold mt-1">--</div>
+      </div>
+      <div class="bg-white rounded-lg shadow-sm p-4 border-l-4 border-yellow-500">
+        <div class="text-sm text-gray-500">浊度</div>
+        <div id="tur" class="text-xl font-bold mt-1">--</div>
+      </div>
+      <div class="bg-white rounded-lg shadow-sm p-4 border-l-4 border-green-500">
+        <div class="text-sm text-gray-500">电导率 EC</div>
+        <div id="ec" class="text-xl font-bold mt-1">--</div>
+      </div>
+    </div>
+
+    <!-- 图表 + AI 区域 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- 实时趋势图 -->
+      <div class="lg:col-span-2 bg-white rounded-lg shadow-sm p-4">
+        <h3 class="font-bold mb-3">水质实时趋势</h3>
+        <div class="h-64">
+          <canvas id="chart"></canvas>
+        </div>
+      </div>
+
+      <!-- AI 分析 -->
+      <div class="bg-blue-50 rounded-lg shadow-sm p-4">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="font-bold">AI 水质分析</h3>
+          <button id="get-ai-btn" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">
+            获取分析建议
+          </button>
+        </div>
+        <div id="ai-content" class="text-sm leading-relaxed text-gray-700 min-h-[120px]">
+          点击按钮获取 AI 分析结果
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ===================== 配置 =====================
+  const API_URL = "https://1347972955-ixfudc0xg3.ap-guangzhou.tencentscf.com/get-all";
+  
+  // 图表初始化
+  const ctx = document.getElementById('chart').getContext('2d');
+  const timeLabels = [];
+  const tempData = [], phData = [], turData = [], ecData = [];
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: timeLabels,
+      datasets: [
+        { label: '水温', data: tempData, borderColor: '#ff4444', backgroundColor: 'transparent' },
+        { label: 'PH', data: phData, borderColor: '#33b5e5', backgroundColor: 'transparent' },
+        { label: '浊度', data: turData, borderColor: '#ff8800', backgroundColor: 'transparent' },
+        { label: 'EC', data: ecData, borderColor: '#00C851', backgroundColor: 'transparent' }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
+
+  // ===================== 获取真实数据 =====================
+  async function updateSensorData() {
+    try {
+      const res = await fetch(API_URL);
+      const result = await res.json();
+      const data = result.data;
+
+      // 更新页面数据
+      document.getElementById("update-time").innerText = "更新时间：" + new Date().toLocaleString();
+      document.getElementById("temp").innerText = data.temp + " ℃";
+      document.getElementById("ph").innerText = data.ph;
+      document.getElementById("tur").innerText = data.tur;
+      document.getElementById("ec").innerText = data.ec;
+
+      // 更新图表
+      if (timeLabels.length >= 15) {
+        timeLabels.shift();
+        tempData.shift();
+        phData.shift();
+        turData.shift();
+        ecData.shift();
+      }
+      timeLabels.push(new Date().toLocaleTimeString());
+      tempData.push(data.temp);
+      phData.push(data.ph);
+      turData.push(data.tur);
+      ecData.push(data.ec);
+      chart.update();
+      
+      return result;
+    } catch (e) {
+      console.error("获取数据失败", e);
+      return null;
+    }
+  }
+
+  // ===================== 获取AI + 翻译中文 =====================
+  document.getElementById("get-ai-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("get-ai-btn");
+    const aiBox = document.getElementById("ai-content");
+    
+    btn.innerText = "分析中...";
+    btn.disabled = true;
+    aiBox.innerText = "正在获取分析结果...";
+
+    const result = await updateSensorData();
+    if (!result) {
+      aiBox.innerText = "获取失败，请检查网络";
+      btn.innerText = "获取分析建议";
+      btn.disabled = false;
+      return;
+    }
+
+    try {
+      // 翻译英文建议为中文
+      const enText = result.ai;
+      const trans = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(enText)}&langpair=en|zh-CN`);
+      const transResult = await trans.json();
+      aiBox.innerText = transResult.responseData.translatedText;
+    } catch (e) {
+      aiBox.innerText = result.ai; // 翻译失败显示英文
+    }
+
+    btn.innerText = "获取分析建议";
+    btn.disabled = false;
+  });
+
+  // 页面加载自动刷新数据
+  updateSensorData();
+  setInterval(updateSensorData, 5000); // 5秒自动刷新传感器数据
+</script>
+</body>
+</html>
